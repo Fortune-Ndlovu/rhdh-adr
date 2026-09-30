@@ -21,6 +21,22 @@ The RHDH Operator can cause pods to pull images defined not only in the ClusterS
 - **Inclusion rule (Operator)**: If the Operator can cause a static container image to run as part of a supported deployment (including default-enabled flavours and optional add-ons when enabled), it belongs in the disconnected inventory.
 - **Resolve (runtime)**: OpenShift may use registry mirroring (IDMS/ITMS) where the platform allows; image substitution in Operator reconcile is a follow-on only after standalone OpenShift validation that mirror config alone is sufficient when pod specs still reference upstream registry names.
 
+**This repository**: `rhdh-adr` records the architectural decision only. Implementation, validation, and CI live in the repositories below. Claims about the **current** gap (incomplete `relatedImages`, tooling not consuming it, stale docs) were validated against those sources at the time this ADR was written; they are not reproduced as files in this repo.
+
+**Relationship to [ADR 003](003-operator-plugin-config-processing.md)**: `ref://` plugin package resolution and OCI/npm plugin artifacts are **out of scope** for this static container inventory. Plugin mirroring uses separate tooling (`mirror-plugins.sh`) and documentation.
+
+## Implementation repositories
+
+| Concern | Owning repository | Canonical paths (main branch) | Planned validation / delivery |
+|--------|-------------------|------------------------------|------------------------------|
+| Operator **declare** (source manifests → bundle CSV) | [redhat-developer/rhdh-operator](https://github.com/redhat-developer/rhdh-operator) | Profile: `config/profile/rhdh/` (flavours, plugin-deps, default-config). Shipped CSV: `bundle/rhdh/manifests/backstage-operator.clusterserviceversion.yaml` (`spec.relatedImages`). Reconcile substitution today: `pkg/model/deployment.go`, `pkg/model/db-statefulset.go` | CI: generated bundle `relatedImages` matches profile static images (e.g. `hack/list-operator-container-images.sh` — **proposed**, not yet in tree) |
+| Operator **discover / mirror** | [redhat-developer/rhdh-operator](https://github.com/redhat-developer/rhdh-operator) | `.rhdh/scripts/prepare-restricted-environment.sh`, `.rhdh/scripts/mirror-plugins.sh` (plugins only) | Tooling change: derive mirror set from CSV `spec.relatedImages` (+ manager image) |
+| Operator **product docs** (in-repo) | [redhat-developer/rhdh-operator](https://github.com/redhat-developer/rhdh-operator) | `.rhdh/docs/airgap.adoc` | Align with inventory-first flow; propagate to customer docs |
+| Helm **declare** | [redhat-developer/rhdh-chart](https://github.com/redhat-developer/rhdh-chart) | `charts/rhdh/values.yaml`, `charts/rhdh/README.md`, `charts/rhdh/docs/migration-from-backstage-chart.md` | Chart release tags bound inventory to a chart version; customers use `helm show values` for that version |
+| Customer **mirror / install procedures** | [redhat-developer/red-hat-developers-documentation-rhdh](https://github.com/redhat-developer/red-hat-developers-documentation-rhdh) | Shared modules: `assemblies/modules/shared/proc-mirror-images-for-helm-deployments-on-*.adoc`, `proc-mirror-images-for-operator-deployments.adoc`; air-gap book: `assemblies/modules/install_installing-rhdh-in-an-air-gapped-environment/` | Doc updates only (no second inventory artifact for Helm) |
+
+**Version boundary**: Operator disconnected inventory is tied to **operator bundle / OLM catalog version** (CSV in that bundle). Helm inventory is tied to **chart version** published with the product (e.g. `charts.openshift.io`). This ADR does not pin a specific release number; implementers apply it per release branch.
+
 ## Decision
 
 Adopt a shared **Declare → Discover → Mirror → Resolve** model for disconnected **static container images**, with install-method-specific sources of truth:
