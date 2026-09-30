@@ -105,7 +105,3 @@ Adopt a shared **Declare → Discover → Mirror → Resolve** model for disconn
 - ⚖️ Dynamic plugins remain a parallel mirroring path (`mirror-plugins.sh` / plugin docs)
 - ⚖️ Hosted control planes and clusters that block IDMS/ITMS may still need site-specific resolve strategies; this ADR does not mandate a single platform feature
 - ⚖️ Implementation tracking lives in engineering backlogs; merging this ADR documents intent, not delivery dates
-
-## Sign-off
-
-- Fortune-Ndlovu <fndlovu@redhat.com>
