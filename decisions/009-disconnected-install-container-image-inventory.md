@@ -26,18 +26,24 @@ quay.io/rhdh-community/rhdh:next                  # name: backstage
 
 **Will be added**:
 
-*LightSpeed / Intelligent Assistant (default-enabled):*
+*LightSpeed / Intelligent Assistant:*
 
 ```bash
-registry.redhat.io/rhdh/rhdh-lightspeed-rag-content-init-rhel9@sha256:...  # name: lightspeed-rag-init
-registry.redhat.io/rhdh/rhdh-lightspeed-service-rhel9@sha256:...            # name: lightspeed-core
+# RAG vector database init container
+registry.access.redhat.com/rhdh/rhdh-lightspeed-rag-content-init-rhel9@sha256:...  # name: lightspeed-rag-init
+
+# LightSpeed AI service sidecar
+registry.redhat.io/lightspeed-core/lightspeed-stack-rhel9@sha256:...               # name: lightspeed-core
+
+# Offline Knowledge Portal (documentation server for RAG)
+registry.redhat.io/offline-knowledge-portal/rhokp-rhel9@sha256:...                 # name: okp
 ```
 
-*Orchestrator (static container images, if any):*
+*Orchestrator:*
 
 ```bash
-# Investigation needed: audit config/profile/rhdh/plugin-deps/ for static container images
-# Plugin OCI artifacts (NOT container images) handled separately via mirror-plugins.sh
+# No static container images - orchestrator uses plugin OCI packages only
+# Plugin packages (NOT container images) handled separately via mirror-plugins.sh
 ```
 
 **NOT in** `relatedImages` (handled separately):
@@ -147,18 +153,22 @@ This section provides the comprehensive list of container images that will be in
 
 ### New Images Being Added (LightSpeed / Intelligent Assistant)
 
-**Source**: [LightSpeed flavor ConfigMap](https://github.com/redhat-developer/rhdh-operator/tree/main/config/profile/rhdh/flavour-lightspeed)
+**Source**: [LightSpeed flavor ConfigMap](https://github.com/redhat-developer/rhdh-operator/tree/main/config/profile/rhdh/flavour-lightspeed) and [OKP plugin-deps](https://github.com/redhat-developer/rhdh-operator/blob/main/config/profile/rhdh/plugin-deps/okp.yaml)
 
+| Image Name            | Registry Reference (Downstream Example)                                          | Purpose                                             | Will Add To                                                        |
+| --------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------ |
+| `lightspeed-rag-init` | `registry.access.redhat.com/rhdh/rhdh-lightspeed-rag-content-init-rhel9@sha256:...` | LightSpeed RAG data initialization (init container) | `spec.relatedImages` + `RELATED_IMAGE_lightspeed_rag_init` env var |
+| `lightspeed-core`     | `registry.redhat.io/lightspeed-core/lightspeed-stack-rhel9@sha256:...`          | LightSpeed backend service (sidecar container)      | `spec.relatedImages` + `RELATED_IMAGE_lightspeed_core` env var     |
+| `okp`                 | `registry.redhat.io/offline-knowledge-portal/rhokp-rhel9@sha256:...`            | Offline Knowledge Portal (Solr + httpd for RAG)     | `spec.relatedImages` + `RELATED_IMAGE_okp` env var                 |
 
-| Image Name            | Registry Reference (Downstream Example)                                     | Purpose                                             | Will Add To                                                        |
-| --------------------- | --------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------ |
-| `lightspeed-rag-init` | `registry.redhat.io/rhdh/rhdh-lightspeed-rag-content-init-rhel9@sha256:...` | LightSpeed RAG data initialization (init container) | `spec.relatedImages` + `RELATED_IMAGE_lightspeed_rag_init` env var |
-| `lightspeed-core`     | `registry.redhat.io/rhdh/rhdh-lightspeed-service-rhel9@sha256:...`          | LightSpeed backend service (sidecar container)      | `spec.relatedImages` + `RELATED_IMAGE_lightspeed_core` env var     |
+**Note**: Registry paths shown are examples. Actual downstream registries and digest-pinned references will be in the shipped CSV. The OKP image is from the Offline Knowledge Portal product team and deploys as a separate Deployment.
 
+**Helm Equivalent**: 
+- RAG init: [`intelligentAssistant.initContainer.image`](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml)
+- LightSpeed core: [`intelligentAssistant.sidecar.image`](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml)
+- OKP: [`intelligentAssistant.okp.image`](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml)
 
-**Helm Equivalent**: `[intelligentAssistant.initContainer.image](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml#L218-L222)` and `[intelligentAssistant.sidecar.image](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml#L223-L227)`
-
-**User Action**: Mirror these images alongside core RHDH images. No separate prerequisite installation required.
+**User Action**: Mirror all three images alongside core RHDH images. No separate prerequisite installation required.
 
 **Current Gap**: [LightSpeed air-gap documentation](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/configure-to-initialize-the-ai-assistant_interacting-with-developer-lightspeed-for-rhdh#mirror-images-for-air-gapped-environments_configure-to-initialize-the-ai-assistant) currently requires manual extraction from bundle ConfigMaps.
 
@@ -295,12 +305,16 @@ apiVersion: operators.coreos.com/v1alpha1
 kind: ClusterServiceVersion
 spec:
   relatedImages:
-  - image: registry.redhat.io/rhdh/rhdh-hub-rhel9@sha256:abc123...
+  - image: registry.access.redhat.com/rhdh/rhdh-hub-rhel9@sha256:abc123...
     name: backstage
-  - image: registry.redhat.io/rhdh/rhdh-rhel9-postgresql-15@sha256:def456...
+  - image: registry.access.redhat.com/rhdh/rhdh-rhel9-postgresql-15@sha256:def456...
     name: postgresql
-  - image: registry.redhat.io/rhdh/lightspeed-core-rhel9@sha256:ghi789...
+  - image: registry.access.redhat.com/rhdh/rhdh-lightspeed-rag-content-init-rhel9@sha256:ghi789...
+    name: lightspeed-rag-init
+  - image: registry.redhat.io/lightspeed-core/lightspeed-stack-rhel9@sha256:jkl012...
     name: lightspeed-core
+  - image: registry.redhat.io/offline-knowledge-portal/rhokp-rhel9@sha256:mno345...
+    name: okp
   
   install:
     spec:
@@ -312,11 +326,15 @@ spec:
               - name: manager
                 env:
                 - name: RELATED_IMAGE_backstage
-                  value: registry.redhat.io/rhdh/rhdh-hub-rhel9@sha256:abc123...
+                  value: registry.access.redhat.com/rhdh/rhdh-hub-rhel9@sha256:abc123...
                 - name: RELATED_IMAGE_postgresql
-                  value: registry.redhat.io/rhdh/rhdh-rhel9-postgresql-15@sha256:def456...
+                  value: registry.access.redhat.com/rhdh/rhdh-rhel9-postgresql-15@sha256:def456...
+                - name: RELATED_IMAGE_lightspeed_rag_init
+                  value: registry.access.redhat.com/rhdh/rhdh-lightspeed-rag-content-init-rhel9@sha256:ghi789...
                 - name: RELATED_IMAGE_lightspeed_core
-                  value: registry.redhat.io/rhdh/lightspeed-core-rhel9@sha256:ghi789...
+                  value: registry.redhat.io/lightspeed-core/lightspeed-stack-rhel9@sha256:jkl012...
+                - name: RELATED_IMAGE_okp
+                  value: registry.redhat.io/offline-knowledge-portal/rhokp-rhel9@sha256:mno345...
 ```
 
 1. **Operator Code** - Reads environment variables at runtime (existing pattern in `[pkg/model/deployment.go](https://github.com/redhat-developer/rhdh-operator/blob/main/pkg/model/deployment.go#L31)` and `[pkg/model/db-statefulset.go](https://github.com/redhat-developer/rhdh-operator/blob/main/pkg/model/db-statefulset.go#L17)`):
@@ -352,10 +370,12 @@ spec:
         value: mirror.example.com/rhdh/rhdh-hub-rhel9@sha256:abc123...
       - name: RELATED_IMAGE_postgresql
         value: mirror.example.com/rhdh/postgresql-15@sha256:def456...
-      - name: RELATED_IMAGE_lightspeed_core
-        value: mirror.example.com/rhdh/lightspeed-core-rhel9@sha256:ghi789...
       - name: RELATED_IMAGE_lightspeed_rag_init
-        value: mirror.example.com/rhdh/lightspeed-rag-init@sha256:jkl012...
+        value: mirror.example.com/rhdh/rhdh-lightspeed-rag-content-init-rhel9@sha256:ghi789...
+      - name: RELATED_IMAGE_lightspeed_core
+        value: mirror.example.com/lightspeed-core/lightspeed-stack-rhel9@sha256:jkl012...
+      - name: RELATED_IMAGE_okp
+        value: mirror.example.com/offline-knowledge-portal/rhokp-rhel9@sha256:mno345...
 ```
 
 **OLM v1 - ClusterExtension with Environment Variable Override:**
@@ -388,7 +408,7 @@ spec:
 After the ClusterExtension deploys the operator, users can patch the deployment:
 
 ```bash
-# Patch operator deployment to override images
+# Patch operator deployment to override images (example with LightSpeed images)
 kubectl patch deployment rhdh-operator-controller-manager \
   -n rhdh-operator \
   --type='json' \
@@ -405,8 +425,24 @@ kubectl patch deployment rhdh-operator-controller-manager \
       "op": "add",
       "path": "/spec/template/spec/containers/0/env/-",
       "value": {
+        "name": "RELATED_IMAGE_lightspeed_rag_init",
+        "value": "mirror.example.com/rhdh/rhdh-lightspeed-rag-content-init-rhel9@sha256:ghi789..."
+      }
+    },
+    {
+      "op": "add",
+      "path": "/spec/template/spec/containers/0/env/-",
+      "value": {
         "name": "RELATED_IMAGE_lightspeed_core",
-        "value": "mirror.example.com/rhdh/lightspeed-core-rhel9@sha256:ghi789..."
+        "value": "mirror.example.com/lightspeed-core/lightspeed-stack-rhel9@sha256:jkl012..."
+      }
+    },
+    {
+      "op": "add",
+      "path": "/spec/template/spec/containers/0/env/-",
+      "value": {
+        "name": "RELATED_IMAGE_okp",
+        "value": "mirror.example.com/offline-knowledge-portal/rhokp-rhel9@sha256:mno345..."
       }
     }
   ]'
@@ -425,9 +461,12 @@ See [rhdh-operator admin documentation](https://github.com/redhat-developer/rhdh
 **Operator**
 
 - Extend the existing `RELATED_IMAGE_*` [pattern](https://github.com/redhat-developer/rhdh-operator/blob/main/bundle/rhdh/manifests/backstage-operator.clusterserviceversion.yaml#L311-L316) to include:
-  - LightSpeed images (init container, sidecar from [flavour ConfigMap](https://github.com/redhat-developer/rhdh-operator/tree/main/config/profile/rhdh/flavour-lightspeed))
-  - Orchestrator images (excluding serverless operator prerequisites)
-  - Additional flavor and plugin-dependency images from `[config/profile/rhdh/](https://github.com/redhat-developer/rhdh-operator/tree/main/config/profile/rhdh)`
+  - **LightSpeed/Intelligent Assistant images** (3 container images):
+    - `lightspeed-rag-init` - RAG vector database init container ([flavour ConfigMap](https://github.com/redhat-developer/rhdh-operator/tree/main/config/profile/rhdh/flavour-lightspeed))
+    - `lightspeed-core` - LightSpeed AI service sidecar
+    - `okp` - Offline Knowledge Portal ([plugin-deps ConfigMap](https://github.com/redhat-developer/rhdh-operator/blob/main/config/profile/rhdh/plugin-deps/okp.yaml))
+  - **Orchestrator**: No static container images (uses plugin OCI packages only; serverless operators are external prerequisites)
+  - Additional flavor and plugin-dependency images from `[config/profile/rhdh/](https://github.com/redhat-developer/rhdh-operator/tree/main/config/profile/rhdh)` as discovered during audit
 - Update **operator air-gap documentation** (`.rhdh/docs/airgap.adoc` and downstream product docs) with **manual-first approach**:
   - **Primary documentation**: Step-by-step manual commands using standard tooling:
     - Extract image list from CSV `spec.relatedImages` using `yq` or `jq`
