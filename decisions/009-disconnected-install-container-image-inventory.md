@@ -56,9 +56,7 @@ registry.access.redhat.com/rhdh/red-hat-developer-hub-backstage-plugin-orchestra
 # ...more plugin packages (these are OCI artifacts, not container images)
 ```
 
-current airgapping docs recommend using oc-mirror on ocp which is perfect. We may need to extend it for vanilla k8s which will all us to utlize the mirror-plugins.sh and manual extraction process, https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/orchestrator_in_red_hat_developer_hub/install-orchestrator-plugin-in-an-air-gapped-environment-with-the-operator_orchestrator-in-rhdh#install-rhdh-with-orchestrator-in-a-fully-disconnected-ocp-environment-using-the-operator_install-orchestrator-plugin-in-an-air-gapped-environment-with-the-operator
-
-
+current airgapping docs recommend using oc-mirror on ocp which is perfect. We may need to extend it for vanilla k8s which will all us to utlize the mirror-plugins.sh and manual extraction process, [https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/orchestrator_in_red_hat_developer_hub/install-orchestrator-plugin-in-an-air-gapped-environment-with-the-operator_orchestrator-in-rhdh#install-rhdh-with-orchestrator-in-a-fully-disconnected-ocp-environment-using-the-operator_install-orchestrator-plugin-in-an-air-gapped-environment-with-the-operator](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/orchestrator_in_red_hat_developer_hub/install-orchestrator-plugin-in-an-air-gapped-environment-with-the-operator_orchestrator-in-rhdh#install-rhdh-with-orchestrator-in-a-fully-disconnected-ocp-environment-using-the-operator_install-orchestrator-plugin-in-an-air-gapped-environment-with-the-operator)
 
 ### Key Decisions
 
@@ -82,8 +80,9 @@ current airgapping docs recommend using oc-mirror on ocp which is perfect. We ma
 The RHDH Operator can cause pods to pull images defined not only in the ClusterServiceVersion operands but also in **flavour** and **plugin-deps** bundle ConfigMaps (for example `lightspeed-core`, OKP, Tekton UBI, Chainguard git). Today `[spec.relatedImages](https://github.com/redhat-developer/rhdh-operator/blob/main/bundle/rhdh/manifests/backstage-operator.clusterserviceversion.yaml#L498-L502)` lists only a subset of those images, and disconnected tooling (`[prepare-restricted-environment.sh](https://github.com/redhat-developer/rhdh-operator/blob/main/.rhdh/scripts/prepare-restricted-environment.sh)`) does **not** treat `relatedImages` as the mirror source of truth—it discovers images mainly by processing CSV files inside operator bundles.
 
 **Helm** installs use a different mechanism but the same customer need: every image referenced by chart defaults must be mirrorable and overridable. The `rhdh` chart already properly documents this contract in:
-- **Chart values**: [`charts/backstage/values.yaml`](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/backstage/values.yaml) (comprehensive image definitions with registry, repository, tag fields)
-- **Chart documentation**: [`docs/intelligent-assistant.md`](https://github.com/redhat-developer/rhdh-chart/blob/main/docs/intelligent-assistant.md) (13KB guide covering LightSpeed/OKP image configuration, including `intelligentAssistant.initContainer.image`, `intelligentAssistant.sidecar.image`, `intelligentAssistant.okp.image.*`)
+
+- **Chart values**: `[charts/backstage/values.yaml](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/backstage/values.yaml)` (comprehensive image definitions with registry, repository, tag fields)
+- **Chart documentation**: `[docs/intelligent-assistant.md](https://github.com/redhat-developer/rhdh-chart/blob/main/docs/intelligent-assistant.md)` (13KB guide covering LightSpeed/OKP image configuration, including `intelligentAssistant.initContainer.image`, `intelligentAssistant.sidecar.image`, `intelligentAssistant.okp.image.`*)
 - **Image override mechanisms**: `global.imageRegistry` for bulk overrides, plus per-component `image.registry/repository/tag` structure
 
 However, product documentation is misaligned with this current chart structure:
@@ -93,19 +92,19 @@ However, product documentation is misaligned with this current chart structure:
 > **Note**: RHDH 1.10 dedicated air-gapped installation book not yet published as of this ADR. References use RHDH 1.7 as latest available showing the pattern. These issues persist across versions and will need fixing when 1.10 air-gap docs publish.
 
 1. **Air-Gapped Helm Installation** ([Reference: RHDH 1.7 example](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.7/html/installing_red_hat_developer_hub_in_an_air-gapped_environment/assembly-install-rhdh-airgapped-environment-k8s-helm_title-install-rhdh-air-grapped)):
-   - **Issue**: Does not instruct users to run `helm show values` to discover the image list from chart defaults
-   - **Fix Needed**: Add clear step-by-step manual commands showing how to extract image references from `values.yaml` using `helm show values` + `yq`
-   - **Applies to**: All platform-specific air-gap Helm procedures (OpenShift, AKS, EKS, GKE) when 1.10 air-gap book publishes
-
+  - **Issue**: Does not instruct users to run `helm show values` to discover the image list from chart defaults
+  - **Fix Needed**: Add clear step-by-step manual commands showing how to extract image references from `values.yaml` using `helm show values` + `yq`
+  - **Applies to**: All platform-specific air-gap Helm procedures (OpenShift, AKS, EKS, GKE) when 1.10 air-gap book publishes
 2. **[RHDH 1.10 - LightSpeed Air-Gap Configuration](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index)** (search page for "mirror"):
-   - **Issue**: References deprecated field names (`global.lightspeed.*`) that don't exist in current chart; actual fields are documented in chart [`docs/intelligent-assistant.md`](https://github.com/redhat-developer/rhdh-chart/blob/main/docs/intelligent-assistant.md) and [`values.yaml`](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/backstage/values.yaml)
-   - **Correct structure**: `intelligentAssistant.initContainer.image.*`, `intelligentAssistant.sidecar.image.*` (aka lightspeed-core), `intelligentAssistant.okp.image.*`
-   - **Fix Needed**: Update product docs to reference current chart structure; leverage the comprehensive guide already in chart [`docs/intelligent-assistant.md`](https://github.com/redhat-developer/rhdh-chart/blob/main/docs/intelligent-assistant.md)
-   - **Verified working URL**: https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index
-
+  - **Issue**: References deprecated field names (`global.lightspeed.`*) that don't exist in current chart; actual fields are documented in chart `[docs/intelligent-assistant.md](https://github.com/redhat-developer/rhdh-chart/blob/main/docs/intelligent-assistant.md)` and `[values.yaml](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/backstage/values.yaml)`
+  - **Correct structure**: `intelligentAssistant.initContainer.image.`*, `intelligentAssistant.sidecar.image.*` (aka lightspeed-core), `intelligentAssistant.okp.image.*`
+  - **Fix Needed**: Update product docs to reference current chart structure; leverage the comprehensive guide already in chart `[docs/intelligent-assistant.md](https://github.com/redhat-developer/rhdh-chart/blob/main/docs/intelligent-assistant.md)`
+  - **Verified working URL**: [https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index)
 3. **General Air-Gap Helm Procedures** (all versions):
-   - **Issue**: No clear guidance that chart `values.yaml` is the authoritative image inventory (unlike Operator CSV which is being standardized)
-   - **Fix Needed**: Document that `helm show values openshift-charts/redhat-developer-hub --version X.Y.Z` is the source of truth for discovering which images to mirror
+  - **Issue**: No clear guidance that chart `values.yaml` is the authoritative image inventory (unlike Operator CSV which is being standardized)
+  - **Fix Needed**: Document that `helm show values openshift-charts/redhat-developer-hub --version X.Y.Z` is the source of truth for discovering which images to mirror
+
+
 
 ### OpenShift Disconnected Operator Requirements
 
@@ -133,6 +132,8 @@ This manual extraction requirement demonstrates the architectural gap this ADR a
 
 - **Inclusion rule (Operator)**: If the Operator can cause a static container image to run as part of a supported deployment (including default-enabled flavours and optional add-ons when enabled), it belongs in the disconnected inventory.
 
+
+
 ## Implementation repositories
 
 
@@ -143,6 +144,8 @@ This manual extraction requirement demonstrates the architectural gap this ADR a
 | Operator **product docs** (in-repo)                  | [redhat-developer/rhdh-operator](https://github.com/redhat-developer/rhdh-operator)                                                 | `.rhdh/docs/airgap.adoc`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              | Align with inventory-first flow; propagate to customer docs                                             |
 | Helm **declare**                                     | [redhat-developer/rhdh-chart](https://github.com/redhat-developer/rhdh-chart)                                                       | `[charts/redhat-developer-hub/values.yaml](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml)`, `[README.md](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/README.md)`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | Chart release tags bind inventory to a chart version; customers use `helm show values` for that version |
 | Customer **mirror / install procedures**             | [redhat-developer/red-hat-developers-documentation-rhdh](https://github.com/redhat-developer/red-hat-developers-documentation-rhdh) | Shared modules: `assemblies/modules/shared/proc-mirror-images-for-helm-deployments-on-*.adoc`, `proc-mirror-images-for-operator-deployments.adoc`; air-gap book: `assemblies/modules/install_installing-rhdh-in-an-air-gapped-environment/`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | Doc updates only (no second inventory artifact for Helm)                                                |
+
+
 
 
 ## Complete Image Inventory
@@ -164,16 +167,19 @@ This section provides the comprehensive list of container images that will be in
 
 **Source**: [LightSpeed flavor ConfigMap](https://github.com/redhat-developer/rhdh-operator/tree/main/config/profile/rhdh/flavour-lightspeed) and [OKP plugin-deps](https://github.com/redhat-developer/rhdh-operator/blob/main/config/profile/rhdh/plugin-deps/okp.yaml)
 
-| Image Name            | Registry Reference (Downstream Example)                                          | Purpose                                             | Will Add To                                                        |
-| --------------------- | -------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------ |
+
+| Image Name            | Registry Reference (Downstream Example)                                             | Purpose                                             | Will Add To                                                        |
+| --------------------- | ----------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------------ |
 | `lightspeed-rag-init` | `registry.access.redhat.com/rhdh/rhdh-lightspeed-rag-content-init-rhel9@sha256:...` | LightSpeed RAG data initialization (init container) | `spec.relatedImages` + `RELATED_IMAGE_lightspeed_rag_init` env var |
-| `lightspeed-core`     | `registry.redhat.io/lightspeed-core/lightspeed-stack-rhel9@sha256:...`          | LightSpeed backend service (sidecar container)      | `spec.relatedImages` + `RELATED_IMAGE_lightspeed_core` env var     |
-| `okp`                 | `registry.redhat.io/offline-knowledge-portal/rhokp-rhel9@sha256:...`            | Offline Knowledge Portal (Solr + httpd for RAG)     | `spec.relatedImages` + `RELATED_IMAGE_okp` env var                 |
+| `lightspeed-core`     | `registry.redhat.io/lightspeed-core/lightspeed-stack-rhel9@sha256:...`              | LightSpeed backend service (sidecar container)      | `spec.relatedImages` + `RELATED_IMAGE_lightspeed_core` env var     |
+| `okp`                 | `registry.redhat.io/offline-knowledge-portal/rhokp-rhel9@sha256:...`                | Offline Knowledge Portal (Solr + httpd for RAG)     | `spec.relatedImages` + `RELATED_IMAGE_okp` env var                 |
+
 
 **Helm Equivalent**: 
-- RAG init: [`intelligentAssistant.initContainer.image`](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml)
-- LightSpeed core: [`intelligentAssistant.sidecar.image`](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml)
-- OKP: [`intelligentAssistant.okp.image`](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml)
+
+- RAG init: `[intelligentAssistant.initContainer.image](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml)`
+- LightSpeed core: `[intelligentAssistant.sidecar.image](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml)`
+- OKP: `[intelligentAssistant.okp.image](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml)`
 
 **User Action**: Mirror all three images alongside core RHDH images. No separate prerequisite installation required.
 
@@ -184,7 +190,7 @@ This section provides the comprehensive list of container images that will be in
 - **Container Images** (in scope for this ADR) - static containers RHDH operator deploys
 - **Plugin OCI Artifacts** (out of scope) - handled by `[mirror-plugins.sh](https://github.com/redhat-developer/rhdh-operator/blob/main/.rhdh/scripts/mirror-plugins.sh)`
 
-**Decision: Plugin OCI Artifacts Cannot Go in `spec.relatedImages`**
+**Decision: Plugin OCI Artifacts Cannot Go in** `spec.relatedImages`
 
 Based on [OpenShift OLM disconnected operator requirements](https://docs.redhat.com/en/documentation/openshift_container_platform/4.4/html/operators/olm-restricted-networks) and the [OLM operator bundle specification](https://github.com/openshift/enhancements/blob/master/enhancements/olm/operator-bundle.md), the `spec.relatedImages` field is strictly for **runnable container images only**, not non-container OCI artifacts:
 
@@ -195,9 +201,7 @@ Based on [OpenShift OLM disconnected operator requirements](https://docs.redhat.
 **Why Plugin Packages Don't Belong in relatedImages:**
 
 1. **Semantic Contract**: The [OLM ClusterServiceVersion specification](https://olm.operatorframework.io/docs/concepts/crds/clusterserviceversion/) defines `relatedImages` as containing "all **container images** required by the Operator" - consistently referring to executable images, not generic OCI artifacts.
-
 2. **Mirroring Tools Expect Container Images**: `oc-mirror` processes `relatedImages` entries as container images for `ImageDigestMirrorSet` (IDMS) configuration. Per [OKD OLM restricted networks documentation](https://docs.okd.io/4.7/operators/admin/olm-restricted-networks.html), IDMS "tells the cluster to look for images in your mirror registry" when **pods pull** them. Plugin packages are never pulled by pods as container images.
-
 3. **No Real-World Examples**: All surveyed OpenShift operators ([OpenTelemetry](https://github.com/openshift/open-telemetry-opentelemetry-operator/pull/246), [Lightspeed](https://github.com/openshift/lightspeed-operator/pull/2083), [SPIRE](https://github.com/openshift/zero-trust-workload-identity-manager/pull/180), [Kueue](https://github.com/openshift/kueue-operator/pull/2599)) list only runnable container images (operator controllers, operands, sidecars, must-gather) in `relatedImages` — zero examples of non-container OCI artifacts like Helm charts, WASM modules, or plugin packages.
 
 **What We'll Do Instead - Orchestrator Plugin Mirroring:**
@@ -205,24 +209,22 @@ Based on [OpenShift OLM disconnected operator requirements](https://docs.redhat.
 The orchestrator feature primarily uses **dynamic plugin OCI artifacts** (plugin packages that get extracted by the plugin-installer, not run as containers). These will be handled through dedicated tooling and documentation:
 
 1. **Update Orchestrator Air-Gap Documentation** ([current docs](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/orchestrator_in_red_hat_developer_hub/install-orchestrator-plugin-in-an-air-gapped-environment-with-the-operator_orchestrator-in-rhdh)) to clearly distinguish:
-   - **Plugin packages** → Mirror using [`mirror-plugins.sh`](https://github.com/redhat-developer/rhdh-operator/blob/main/.rhdh/scripts/mirror-plugins.sh) or manual `skopeo` commands
-   - **Serverless operator prerequisites** → Mirror via standard OLM catalog mirroring (they have their own `relatedImages`)
-   - **Any static container images** (if found during audit) → Add to RHDH CSV `relatedImages`
-
+  - **Plugin packages** → Mirror using `[mirror-plugins.sh](https://github.com/redhat-developer/rhdh-operator/blob/main/.rhdh/scripts/mirror-plugins.sh)` or manual `skopeo` commands
+  - **Serverless operator prerequisites** → Mirror via standard OLM catalog mirroring (they have their own `relatedImages`)
+  - **Any static container images** (if found during audit) → Add to RHDH CSV `relatedImages`
 2. **Manual-First Documentation Approach**:
-   ```bash
+  ```bash
    # Mirror orchestrator plugin packages manually
    # Extract plugin references from catalog index, then mirror each package
    skopeo copy \
      oci://registry.access.redhat.com/rhdh/red-hat-developer-hub-backstage-plugin-orchestrator@sha256:... \
      oci://mirror.example.com/rhdh/red-hat-developer-hub-backstage-plugin-orchestrator@sha256:...
-   
+
    # Repeat for orchestrator-backend, scaffolder-backend-module-orchestrator, etc.
-   ```
+  ```
+3. **Optional Automation**: Link to `[mirror-plugins.sh](https://github.com/redhat-developer/rhdh-operator/blob/main/.rhdh/scripts/mirror-plugins.sh)` as optional automation for users who prefer it, with clear notice to review script source before running.
 
-3. **Optional Automation**: Link to [`mirror-plugins.sh`](https://github.com/redhat-developer/rhdh-operator/blob/main/.rhdh/scripts/mirror-plugins.sh) as optional automation for users who prefer it, with clear notice to review script source before running.
-
-**Action Item**: Audit [`config/profile/rhdh/plugin-deps/`](https://github.com/redhat-developer/rhdh-operator/tree/main/config/profile/rhdh/plugin-deps) to confirm orchestrator has no static container images beyond plugin packages. If static container images are found (unlikely based on current architecture), add them to CSV `relatedImages`.
+**Action Item**: Audit `[config/profile/rhdh/plugin-deps/](https://github.com/redhat-developer/rhdh-operator/tree/main/config/profile/rhdh/plugin-deps)` to confirm orchestrator has no static container images beyond plugin packages. If static container images are found (unlikely based on current architecture), add them to CSV `relatedImages`.
 
 **Plugin OCI Artifacts** (handled separately via `mirror-plugins.sh`):
 
@@ -278,6 +280,7 @@ mirror:
 - They have their own `relatedImages` in their respective CSVs
 - They must be installed cluster-wide before RHDH orchestrator can use them
 - Their images are managed by the OpenShift Serverless team, not RHDH
+
 
 
 ## Decision
@@ -489,6 +492,8 @@ See [rhdh-operator admin documentation](https://github.com/redhat-developer/rhdh
   - **Position in docs**: Optional automation layer, not the primary procedure
 - **Note**: Operator reconcile already handles environment variable substitution for core images; extending to additional images uses the same code paths.
 
+
+
 **Helm**
 
 - Treat `helm show values` on the shipped chart version as the customer-facing discovery step for static images.
@@ -512,8 +517,6 @@ See [rhdh-operator admin documentation](https://github.com/redhat-developer/rhdh
   - Show manual `skopeo` commands for plugin OCI artifacts
   - Link to `[mirror-plugins.sh](https://github.com/redhat-developer/rhdh-operator/blob/main/.rhdh/scripts/mirror-plugins.sh)` as optional automation
   - Do not fold plugin OCI/npm into the static container inventory
-
-
 
 **Shared principles**
 
@@ -621,18 +624,15 @@ See [rhdh-operator admin documentation](https://github.com/redhat-developer/rhdh
 **Updates Needed**:
 
 1. **Operator Installation Procedures**:
-  
   **Target Documentation Page**: 
   - **Note**: Dedicated "Installing RHDH in an Air-Gapped Environment" book not yet published for 1.10
   - **Reference pattern**: [RHDH 1.7 - Air-Gapped Operator Install](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.7/html/installing_red_hat_developer_hub_in_an_air-gapped_environment/assembly-install-rhdh-airgapped-environment-ocp-operator_title-install-rhdh-air-grapped)
   - **Alternative**: [RHDH 1.10 - Orchestrator Air-Gap with Operator](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/orchestrator_in_red_hat_developer_hub/install-orchestrator-plugin-in-an-air-gapped-environment-with-the-operator_orchestrator-in-rhdh) (shows current operator air-gap patterns)
-  
   **Why This Needs Updates**:
   - Currently doesn't clearly state that CSV `spec.relatedImages` is the authoritative source for the complete image list
   - Doesn't provide manual-first examples (over-relies on `prepare-restricted-environment.sh` script)
   - Missing clear `yq`/`jq` examples for extracting images from CSV
   - Doesn't document Subscription `spec.config.env` override mechanism for edge cases
-  
   **Documentation Structure (Manual-First Approach)**:
   - **Primary Path - Manual Steps**:
     ```bash
@@ -667,17 +667,14 @@ See [rhdh-operator admin documentation](https://github.com/redhat-developer/rhdh
   - Reference OLM v1 ClusterExtension deployment patch approach
   - Cross-link to [operator repository documentation](https://github.com/redhat-developer/rhdh-operator/blob/main/.rhdh/docs/airgap.adoc)
 2. **Helm Installation Procedures**:
-  
   **Target Documentation Pages**:
   - **Note**: Dedicated "Installing RHDH in an Air-Gapped Environment" book not yet published for 1.10
   - **Reference pattern**: [RHDH 1.7 - Kubernetes Air-Gap Helm](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.7/html/installing_red_hat_developer_hub_in_an_air-gapped_environment/assembly-install-rhdh-airgapped-environment-k8s-helm_title-install-rhdh-air-grapped)
   - **Platform-specific variants** (when 1.10 publishes): OpenShift, AKS, EKS, GKE air-gap Helm procedures
-  
   **Why These Need Updates**:
   - Currently don't instruct users that `helm show values` is the authoritative image inventory
   - Missing clear extraction examples using `yq` to parse chart defaults
   - Don't document the image override mechanism (`global.imageRegistry`, per-component overrides)
-  
   **Documentation Structure (Manual-First Approach)**:
   - **Primary Path - Manual Steps**:
     ```bash
@@ -722,47 +719,48 @@ See [rhdh-operator admin documentation](https://github.com/redhat-developer/rhdh
   - **Optional Automation**:
     > The operator repository provides `[mirror-plugins.sh](https://github.com/redhat-developer/rhdh-operator/blob/main/.rhdh/scripts/mirror-plugins.sh)` which automates plugin catalog mirroring. Review the script source before running in production environments.
 3. **LightSpeed Air-Gap Documentation**:
-  
   **Target Documentation Page**: 
   - **Verified URL**: [Interacting with Red Hat Developer Lightspeed for RHDH](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html-single/interacting_with_red_hat_developer_lightspeed_for_red_hat_developer_hub/index)
   - **Specific section**: Search page for "mirror" or "air-gapped" to find air-gap configuration sections
-  
   **Why This Needs Updates**:
   - **Current Issue**: States "The `prepare-restricted-environment.sh` script does not automatically parse Developer Lightspeed for RHDH images from the bundle manifest, so mirror these images manually"
   - **Root Cause**: LightSpeed images not in CSV `spec.relatedImages` (this ADR fixes that)
-  - **Helm Issue**: References deprecated `global.lightspeed.*` field names instead of current `intelligentAssistant.initContainer.image`, `intelligentAssistant.sidecar.image`, `intelligentAssistant.okp.image`
-  
+  - **Helm Issue**: References deprecated `global.lightspeed.`* field names instead of current `intelligentAssistant.initContainer.image`, `intelligentAssistant.sidecar.image`, `intelligentAssistant.okp.image`
   **Updates Needed**:
   - **Operator**: Remove manual bundle extraction requirement; update to reference CSV `spec.relatedImages` as source (once images are added per this ADR)
-  - **Helm**: Replace `global.lightspeed.*` with current chart structure from [`values.yaml`](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml)
+  - **Helm**: Replace `global.lightspeed.`* with current chart structure from `[values.yaml](https://github.com/redhat-developer/rhdh-chart/blob/main/charts/redhat-developer-hub/values.yaml)`
   - Document all 3 container images: `lightspeed-rag-init`, `lightspeed-core`, `okp`
   - Align with standard operator/Helm mirror flows (same manual-first approach as general air-gap docs)
 4. **Orchestrator Air-Gap Documentation**:
-  
+
+
+
   **Target Documentation Page**:
-  - **Verified URL**: [RHDH 1.10 - Install Orchestrator Plugin in Air-Gapped Environment with Operator](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/orchestrator_in_red_hat_developer_hub/install-orchestrator-plugin-in-an-air-gapped-environment-with-the-operator_orchestrator-in-rhdh)
-  
+
+- **Verified URL**: [RHDH 1.10 - Install Orchestrator Plugin in Air-Gapped Environment with Operator](https://docs.redhat.com/en/documentation/red_hat_developer_hub/1.10/html/orchestrator_in_red_hat_developer_hub/install-orchestrator-plugin-in-an-air-gapped-environment-with-the-operator_orchestrator-in-rhdh)
+
   **Updates Needed**:
-  - **Clarify three-tier mirroring model**:
-    - **Plugin OCI packages** → Manual `skopeo` commands or [`mirror-plugins.sh`](https://github.com/redhat-developer/rhdh-operator/blob/main/.rhdh/scripts/mirror-plugins.sh) (NOT in `relatedImages` - see [OLM container images requirement](https://docs.redhat.com/en/documentation/openshift_container_platform/4.4/html/operators/olm-restricted-networks))
-    - **Serverless operator prerequisites** → Standard OLM catalog mirroring (they have their own CSV `relatedImages`)
-    - **RHDH static container images** (if any) → Covered by RHDH CSV `relatedImages`
-  - Add explicit warning: *"Plugin packages are OCI artifacts (npm tarballs in OCI format), not container images. They cannot be listed in `spec.relatedImages` per [OLM specification](https://olm.operatorframework.io/docs/concepts/crds/clusterserviceversion/) and must be mirrored separately."*
-  - Document manual plugin mirroring workflow:
-    ```bash
-    # 1. Extract plugin catalog index
-    skopeo copy oci://registry.access.redhat.com/rhdh/plugin-catalog-index:2.1.0 \
-      oci://mirror.example.com/rhdh/plugin-catalog-index:2.1.0
-    
-    # 2. Extract plugin package references from index
-    # 3. Mirror each orchestrator plugin package:
-    skopeo copy \
-      oci://registry.access.redhat.com/rhdh/red-hat-developer-hub-backstage-plugin-orchestrator@sha256:... \
-      oci://mirror.example.com/rhdh/red-hat-developer-hub-backstage-plugin-orchestrator@sha256:...
-    # (repeat for orchestrator-backend, scaffolder-backend-module-orchestrator, etc.)
-    ```
-  - Link to [OpenShift Serverless documentation](https://docs.openshift.com/serverless/) for prerequisite operator installation
-  - Cross-reference [`mirror-plugins.sh`](https://github.com/redhat-developer/rhdh-operator/blob/main/.rhdh/scripts/mirror-plugins.sh) as optional automation with security review notice
+
+- **Clarify three-tier mirroring model**:
+  - **Plugin OCI packages** → Manual `skopeo` commands or `[mirror-plugins.sh](https://github.com/redhat-developer/rhdh-operator/blob/main/.rhdh/scripts/mirror-plugins.sh)` (NOT in `relatedImages` - see [OLM container images requirement](https://docs.redhat.com/en/documentation/openshift_container_platform/4.4/html/operators/olm-restricted-networks))
+  - **Serverless operator prerequisites** → Standard OLM catalog mirroring (they have their own CSV `relatedImages`)
+  - **RHDH static container images** (if any) → Covered by RHDH CSV `relatedImages`
+- Add explicit warning: *"Plugin packages are OCI artifacts (npm tarballs in OCI format), not container images. They cannot be listed in* `spec.relatedImages` *per [OLM specification](https://olm.operatorframework.io/docs/concepts/crds/clusterserviceversion/) and must be mirrored separately."*
+- Document manual plugin mirroring workflow:
+  ```bash
+  # 1. Extract plugin catalog index
+  skopeo copy oci://registry.access.redhat.com/rhdh/plugin-catalog-index:2.1.0 \
+    oci://mirror.example.com/rhdh/plugin-catalog-index:2.1.0
+
+  # 2. Extract plugin package references from index
+  # 3. Mirror each orchestrator plugin package:
+  skopeo copy \
+    oci://registry.access.redhat.com/rhdh/red-hat-developer-hub-backstage-plugin-orchestrator@sha256:... \
+    oci://mirror.example.com/rhdh/red-hat-developer-hub-backstage-plugin-orchestrator@sha256:...
+  # (repeat for orchestrator-backend, scaffolder-backend-module-orchestrator, etc.)
+  ```
+- Link to [OpenShift Serverless documentation](https://docs.openshift.com/serverless/) for prerequisite operator installation
+- Cross-reference `[mirror-plugins.sh](https://github.com/redhat-developer/rhdh-operator/blob/main/.rhdh/scripts/mirror-plugins.sh)` as optional automation with security review notice
 
 **Cross-linking Strategy**:
 
