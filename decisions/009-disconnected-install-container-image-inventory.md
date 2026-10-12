@@ -106,6 +106,43 @@ This manual extraction requirement demonstrates the architectural gap this ADR a
 
 
 
+## Downstream Impact
+
+Adding images to the upstream CSV's `spec.relatedImages` has a small but important downstream impact on the midstream build pipeline.
+
+### Background: How Downstream Handles Images
+
+The downstream build process performs two key transformations:
+
+1. **Digest pinning**: Upstream tags (e.g., `:latest`, `:0.7.0`) are automatically converted to digest-pinned product images (e.g., `@sha256:abc123...`) by the Konflux build pipeline.
+
+2. **Staleness detection**: The `sync-midstream.sh` script compares image digests in the bundle against the latest digests in Red Hat's product registry. When digests don't match, it triggers a bundle rebuild to pick up the newer image.
+
+### Current State
+
+Today, LightSpeed and OKP images exist only in ConfigMaps, and `sync-midstream.sh` already checks those ConfigMap entries for staleness. PostgreSQL and Backstage images exist in both ConfigMaps and the CSV's `spec.relatedImages`, so they have checks in both places.
+
+### What Changes
+
+This ADR adds LightSpeed and OKP images to the CSV's `spec.relatedImages`. This means these images will now exist in **two locations**:
+- ConfigMaps (already checked)
+- CSV `spec.relatedImages` (not yet checked)
+
+### Required Update
+
+The downstream team needs to add staleness checks for the new CSV entries in `sync-midstream.sh`, following the same pattern as PostgreSQL.
+
+**Location**: Add checks around right after the existing OKP ConfigMap check ends
+
+**Images requiring new checks**:
+- `lightspeed-core` (LightSpeed AI service sidecar)
+- `okp` (Offline Knowledge Portal)  fulfills the TODO comment on `sync-midstream.sh`
+- `lightspeed-rag-init` (RAG initialization container, if included)
+
+**Why this matters**: Without these checks, when Red Hat releases new versions of these product images, the ConfigMaps will update automatically but the CSV's `spec.relatedImages` entries will remain outdated. This breaks the air-gap workflow because mirror tooling reads from `spec.relatedImages` to discover which images to copy.
+
+**No changes needed**: The `replaceUpstreamImages.sh` script already handles ConfigMap digest pinning correctly and requires no updates.
+
 ## Complete Image Inventory
 
 This section provides the comprehensive list of container images that will be included in `spec.relatedImages`, clarifying what RHDH provides vs. what are external prerequisites.
