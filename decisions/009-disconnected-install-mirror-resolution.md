@@ -208,7 +208,7 @@ The current [Orchestrator air-gap documentation](https://docs.redhat.com/en/docu
 | `sync-midstream.sh` | Add staleness checks for the 2 new `spec.relatedImages` entries (`lightspeed-core`, `okp`), following the same pattern used for `postgresql` | Without this, when Red Hat releases new versions of these images, the ConfigMaps will update but the CSV entries will go stale. `oc-mirror` reads from `spec.relatedImages`, so stale entries break the air-gap workflow. |
 | `replaceUpstreamImages.sh` | **No changes needed** — already handles digest pinning for all image references in the CSV | Existing logic covers new entries automatically |
 
-**Conforma validation**: Adding images to `spec.relatedImages` enables [Conforma](https://redhat.atlassian.net/browse/RHDHSUPP-417) downstream pipeline validation to verify that Lightspeed images come from trusted registries — the same validation already applied to `backstage` and `postgresql`.
+**Conforma validation**: Adding images to `spec.relatedImages` enables [Conforma](https://conforma.dev/) downstream pipeline validation to verify that Lightspeed images come from trusted registries — the same validation already applied to `backstage` and `postgresql`.
 
 ### Documentation Changes ([red-hat-developers-documentation-rhdh](https://github.com/redhat-developer/red-hat-developers-documentation-rhdh))
 
