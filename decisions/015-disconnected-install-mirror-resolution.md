@@ -4,7 +4,7 @@
 
 **Decision**: adopt one complete contract for container images in disconnected environments:
 
-> Every container image the operator can inject into a workload it creates for the RHDH profile (`config/profile/rhdh/**`) must be exposed through a matching `RELATED_IMAGE_*` environment variable on the operator deployment. `make bundle` generates the CSV's `spec.relatedImages` entry from that env var, so the env var is the source of truth and `spec.relatedImages` is the generated artifact. No operator-chosen image may require reading operator source or bundle ConfigMaps to discover. The single deliberate exception is `plugin-installer`, which remains a manual Dev Preview override until GA (see below).
+> Every container image the operator can inject into a workload it creates for the RHDH profile (`config/profile/rhdh/**`) must be exposed through a matching `RELATED_IMAGE_*` environment variable on the operator deployment. `make bundle` generates the CSV's `spec.relatedImages` entry from that env var, so the env var is the source of truth and `spec.relatedImages` is the generated artifact. No operator-chosen image may require reading operator source or bundle ConfigMaps to discover. The single deliberate exception is Dev Preview or Tech Preview images, which can only be listed if coming from trusted registries (like `registry.redhat.io` or `registry.access.redhat.com`) or must remain unlisted until GA (see below with the `plugin-installer` image introduced as Dev Preview in 2.1).
 
 The mechanism is the standard Red Hat operator pattern: `spec.relatedImages` for discovery and mirroring, and `RELATED_IMAGE_*` environment variables for resolution. It is not a new mechanism. It generalizes the override the operator already performs for `backstage` and `postgresql`, plus the manual `plugin-installer` override used when `OPERATOR_DP_PROCESSING=true`, to every flavour and plugin-dependency image chosen by the RHDH profile. The `backstage`, `postgresql`, and `plugin-installer` overrides keep their existing Go code path; moving them into templates is not part of this decision.
 
@@ -14,14 +14,14 @@ The mechanism is the standard Red Hat operator pattern: `spec.relatedImages` for
 |-------|---------------|---------------------------|
 | `backstage` (RHDH hub) | Always | `RELATED_IMAGE_backstage` (existing) |
 | `postgresql` | Local database is enabled | `RELATED_IMAGE_postgresql` (existing) |
-| `lightspeed-core` | Always in 2.1+ — the Intelligent Assistant flavour is `enabledByDefault: true` | `RELATED_IMAGE_lightspeed_core` |
+| `lightspeed-core` | Always in 2.1+ — the Intelligent Assistant flavour is `enabledByDefault: true` | `RELATED_IMAGE_flavour_intelligent_assistant_lightspeed_core` |
 | `okp` | OKP plugin dependency (used when the `intelligent-assistant-okp` flavour is enabled) | `RELATED_IMAGE_plugin_dep_okp` |
 | `postgresql` client job | `orchestrator` flavour is enabled (opt-in) | Reuses `RELATED_IMAGE_postgresql` |
-| `ubi10-minimal` | Tekton plugin dependency (`ref: tekton`) is enabled; used by orchestrator workflows | `RELATED_IMAGE_ubi_minimal` |
-| Tekton git image | Tekton plugin dependency (`ref: tekton`) is enabled; used by orchestrator workflows | `RELATED_IMAGE_tekton_git` |
+| `ubi10-minimal` | Tekton plugin dependency (`ref: tekton`) is enabled; used by orchestrator workflows | `RELATED_IMAGE_plugin_dep_tekton_ubi` |
+| Tekton git image | Tekton plugin dependency (`ref: tekton`) is enabled; used by orchestrator workflows | `RELATED_IMAGE_plugin_dep_tekton_git` |
 | `plugin-installer` | `OPERATOR_DP_PROCESSING=true` (Dev Preview; GA gate) | `RELATED_IMAGE_plugin_installer` (manual override; intentionally not in `spec.relatedImages` until GA) |
 
-`plugin-installer` is the one deliberate exception to the discoverability rule. It is a Dev Preview feature and is intentionally excluded from `spec.relatedImages` until GA, because listing it would fail Conforma validation (it was removed from `deployment-patch.yaml` in [rhdh-operator#3701](https://github.com/redhat-developer/rhdh-operator/pull/3701)). Users who enable `OPERATOR_DP_PROCESSING=true` must set `RELATED_IMAGE_plugin_installer` manually, as documented in `docs/dynamic-plugins.md`.
+`plugin-installer` is the Dev Preview image covered by that exception. It is intentionally excluded from `spec.relatedImages` until GA, because listing it would fail Conforma validation (it was removed from `deployment-patch.yaml` in [rhdh-operator#3701](https://github.com/redhat-developer/rhdh-operator/pull/3701)). Users who enable `OPERATOR_DP_PROCESSING=true` must set `RELATED_IMAGE_plugin_installer` manually, as documented in `docs/dynamic-plugins.md`.
 
 **Explicitly out of scope** (with reasons in [Out of scope](#out-of-scope)):
 
@@ -109,9 +109,9 @@ See the OCP documentation, [Using Operator Lifecycle Manager in disconnected env
 
 RHDH adopts the following rule for every image the operator selects for the RHDH profile:
 
-1. **Discoverable**: the image is exposed as a `RELATED_IMAGE_*` env var on the operator deployment. `make bundle` generates the CSV's `spec.relatedImages` entry from that env var, so the env var is the source of truth and `spec.relatedImages` is the generated artifact. `plugin-installer` is the documented exception until GA.
-2. **Overridable**: the operator resolves the image through the matching `RELATED_IMAGE_*` env var when it is non-empty, falling back to the upstream default when the env var is unset or empty. Flavour and plugin-dependency images resolve at render time through the template helper; the core images (`backstage`, `postgresql`, `plugin-installer`) keep their existing Go override code. Features that require an explicit value are the exception: `plugin-installer` errors when DP processing is enabled and the env var is empty.
-3. **Documented**: the image appears in the operator air-gap reference with its env var name, default value, and the flavour/plugin that requires it.
+1. **Discoverable**: the image is exposed as a `RELATED_IMAGE_*` env var on the operator deployment. `make bundle` generates the CSV's `spec.relatedImages` entry from that env var, so the env var is the source of truth and `spec.relatedImages` is the generated artifact. Dev Preview and Tech Preview images are the only exception: they may be listed only when the image comes from a trusted registry, and `plugin-installer` stays unlisted until GA.
+2. **Overridable**: the operator resolves the image only through the matching `RELATED_IMAGE_*` env var. The manifest carries no second copy of the reference, so there is one value and nothing to drift out of sync. Flavour and plugin-dependency images resolve at render time through the template helper; the core images (`backstage`, `postgresql`, `plugin-installer`) keep their existing Go override code. A missing or empty value fails rendering for every new image, matching the error the `plugin-installer` path already produces when DP processing is enabled without it.
+3. **Documented**: the image appears in the operator air-gap reference with its env var name, value, and the flavour/plugin that requires it.
 4. **Guarded**: CI fails if a flavour or plugin-dep under `config/profile/rhdh/**` introduces a literal `image:` or an image-valued Tekton `default:` (such as `BASE_IMAGE`) that is not resolved through the mechanism. CI also fails if a Go-injected `RELATED_IMAGE_*` reference is missing from `deployment-patch.yaml`, or if a generated `relatedImages[]` entry is empty or untagged.
 
 The contract applies to images the operator injects into workloads it creates. It does not apply to images pulled by other operators or by tooling inside a container.
@@ -125,13 +125,13 @@ The contract applies to images the operator injects into workloads it creates. I
   value: quay.io/fedora/postgresql-18:latest          # also used by the sonataflow psql job
 - name: RELATED_IMAGE_backstage
   value: quay.io/rhdh-community/rhdh:next
-- name: RELATED_IMAGE_lightspeed_core
+- name: RELATED_IMAGE_flavour_intelligent_assistant_lightspeed_core
   value: quay.io/lightspeed-core/lightspeed-stack:0.7.3
 - name: RELATED_IMAGE_plugin_dep_okp
   value: registry.redhat.io/offline-knowledge-portal/rhokp-rhel9:1.3.0-1793303796
-- name: RELATED_IMAGE_ubi_minimal
+- name: RELATED_IMAGE_plugin_dep_tekton_ubi
   value: registry.access.redhat.com/ubi10-minimal:10.1
-- name: RELATED_IMAGE_tekton_git
+- name: RELATED_IMAGE_plugin_dep_tekton_git
   value: cgr.dev/chainguard/git:root-2.39@sha256:7759f87050dd8bacabe61354d75ccd7f864d6b6f8ec42697db7159eccd491139
 ```
 
@@ -144,28 +144,28 @@ relatedImages:
   - image: quay.io/rhdh-community/rhdh:next
     name: backstage
   - image: quay.io/lightspeed-core/lightspeed-stack:0.7.3
-    name: lightspeed-core
+    name: flavour-intelligent-assistant-lightspeed-core
   - image: registry.redhat.io/offline-knowledge-portal/rhokp-rhel9:1.3.0-1793303796
     name: plugin-dep-okp
   - image: registry.access.redhat.com/ubi10-minimal:10.1
-    name: ubi-minimal
+    name: plugin-dep-tekton-ubi
   - image: cgr.dev/chainguard/git:root-2.39@sha256:7759f87050dd8bacabe61354d75ccd7f864d6b6f8ec42697db7159eccd491139
-    name: tekton-git
+    name: plugin-dep-tekton-git
 ```
 
 Notes:
 
-- The `backstage` and `postgresql` defaults match `rhdh-operator` `main` at the time of writing. `release-2.1` uses `quay.io/rhdh-community/rhdh:next-2.1` for `backstage`, not `:next`. The remaining entries are proposed by this ADR and do not exist upstream yet. Take the block from the branch being implemented; this ADR records a decision, not an authoritative pin list. ADRs are immutable once merged, so treat this block as a snapshot: refresh values when the operator pins move, and do not copy an old ADR revision into an implementation.
+- The `backstage` and `postgresql` values match `rhdh-operator` `main` at the time of writing. `release-2.1` uses `quay.io/rhdh-community/rhdh:next-2.1` for `backstage`, not `:next`. The remaining entries are proposed by this ADR and do not exist upstream yet. Take the block from the branch being implemented; this ADR records a decision, not an authoritative pin list. ADRs are immutable once merged, so treat this block as a snapshot: refresh values when the operator pins move, and do not copy an old ADR revision into an implementation.
 - `operator-sdk generate bundle` derives `spec.relatedImages` from `RELATED_IMAGE_*` env vars found on container specs in the bundle manifests. It does not scan ConfigMap contents, so the env var must be on the operator deployment.
-- operator-sdk normalises names: `RELATED_IMAGE_lightspeed_core` becomes `lightspeed-core`, `RELATED_IMAGE_plugin_dep_okp` becomes `plugin-dep-okp`. The underscore/hyphen difference is expected.
+- Env var names identify where the image comes from: flavour images use `RELATED_IMAGE_flavour_<flavour>_<image>`, plugin-dependency images use `RELATED_IMAGE_plugin_dep_<dependency>_<image>`, and the two core images keep their existing unprefixed names. operator-sdk normalises the name into the `spec.relatedImages` entry: `RELATED_IMAGE_flavour_intelligent_assistant_lightspeed_core` becomes `flavour-intelligent-assistant-lightspeed-core`, `RELATED_IMAGE_plugin_dep_okp` becomes `plugin-dep-okp`. The underscore/hyphen difference is expected.
 - Values must be non-empty. An empty env value produces an empty `relatedImages[].image`, which breaks mirroring. CI must reject it.
 - Values must be pinned to a tag or digest. A bare reference such as `registry.access.redhat.com/ubi10-minimal` resolves to `:latest` and drifts between mirror runs; the source-of-truth block above pins `:10.1`. CI must reject untagged entries.
-- The upstream/community defaults in the block above that use `:next` or `:latest` (`backstage`, `postgresql`) intentionally stay floating: that is how upstream builds are consumed, and the downstream pipeline replaces them with digest-pinned product images. The pinning rule therefore applies to product values and to the generated CSV/bundle, not to those two upstream defaults.
+- The upstream/community values in the block above that use `:next` or `:latest` (`backstage`, `postgresql`) intentionally stay floating: that is how upstream builds are consumed, and the downstream pipeline replaces them with digest-pinned product images. The pinning rule therefore applies to product values and to the generated CSV/bundle, not to those two upstream values.
 - `:10.1` is a minor-version stream that Red Hat moves on rebuilds, so it can still drift between mirror runs. Use a dated `10.1-<build>` tag or a digest if run-to-run reproducibility is required; the downstream product image should be digest-pinned either way.
 - Use one canonical env var name per image. If the same image appears under two names, operator-sdk emits the image once with an empty name.
-- A misspelled or undeclared `RELATED_IMAGE_*` name does not fail fast. The helper falls back to the public default, the pod is scheduled, and the pull then fails with `ImagePullBackOff` in a disconnected cluster. CI must verify that every name passed to `relatedImage` maps to a declared env var. The helper should log a warning when it falls back and `KUBERNETES_SERVICE_HOST` is set (i.e. running in a cluster); do not log during unit tests or `make run`.
+- A misspelled `RELATED_IMAGE_*` name fails rendering: the helper errors when the variable is unset, so reconciliation stops with the variable name instead of scheduling a pod that pulls a public image and later fails with `ImagePullBackOff`. CI must still verify that every name passed to `relatedImage` maps to a declared env var, so a typo is caught at review time rather than at install time.
 - The sonataflow psql job reuses `RELATED_IMAGE_postgresql` rather than introducing a second PostgreSQL entry. It runs `psql` against the same database operand, so the same product image is appropriate. If a future orchestrator version requires a different client version, it gets its own env var.
-- The Tekton `ubi10-minimal` reference appears in three step images (`flatten`, `build-manifests`, `build-gitops`); all three resolve through the single `RELATED_IMAGE_ubi_minimal` env var.
+- The Tekton `ubi10-minimal` reference appears in three step images (`flatten`, `build-manifests`, `build-gitops`); all three resolve through the single `RELATED_IMAGE_plugin_dep_tekton_ubi` env var.
 - The Tekton git reference is a `Task` parameter default (`BASE_IMAGE`), consumed as `image: $(params.BASE_IMAGE)` rather than a literal `image:` field. The operator still chooses it when the workflow does not override the parameter, so it is covered. The `quay.io/$(params...)` reference that the workflow builds at runtime is not operator-chosen and stays out of scope.
 - `plugin-installer` remains a manual override until GA. It is intentionally not declared in `deployment-patch.yaml`, because listing it in `spec.relatedImages` would fail Conforma validation (it was removed in [rhdh-operator#3701](https://github.com/redhat-developer/rhdh-operator/pull/3701)). When `OPERATOR_DP_PROCESSING=true`, users must set `RELATED_IMAGE_plugin_installer` manually (for example on the Subscription or Deployment). The env var is consumed only when DP processing is enabled; when it is empty, the operator errors instead of falling back. At GA, it joins the standard `relatedImages` inventory.
 - The `lightspeed-rag-init` init-container image mentioned in earlier reviews was removed in RHDH 2.1 and is not part of this inventory.
@@ -174,28 +174,30 @@ Notes:
 
 The operator must resolve every **flavour and plugin-dependency** image through a template helper at render time. The three core images (`backstage`, `postgresql`, `plugin-installer`) keep their existing Go overrides; this ADR does not move them into templates.
 
-The helper reads the `RELATED_IMAGE_*` env var when it is non-empty and otherwise returns the upstream default baked into the manifest. The fallback is required for rendering paths that do not run from the operator Deployment: `make run` sets only `OPERATOR_DP_PROCESSING` and `RELATED_IMAGE_plugin_installer`, unit and integration tests construct the model without a Deployment, and custom installs may omit an env var. By contrast, `make deploy` and `dist/rhdh/install.yaml` inherit every variable from `deployment-patch.yaml`, and the Helm chart deploys RHDH directly without the operator, so none of those paths rely on the fallback. An empty image would break any path that does.
+Each reference is written exactly once, as a `RELATED_IMAGE_*` value in `config/profile/rhdh/patches/deployment-patch.yaml`. The flavour and plugin-dependency manifests name the image and nothing else; the helper reads the environment variable at render time. Nothing is baked into the manifest, so the value the operator injects cannot drift from the value `make bundle` writes into `spec.relatedImages`.
 
-A raw `{{env.RELATED_IMAGE_*}}` placeholder is not sufficient on its own. It has no fallback, so any render without the env var (local runs, tests, custom installs) would produce an empty image, and the plugin-deps loader does not run the template engine at all today. The helper plus the loader change below solves both problems.
+The variables are set once, on the controller container, and the paths that run the controller inherit them: `deployment-patch.yaml` feeds `make deploy`, `dist/rhdh/install.yaml`, and the CSV, and OLM passes the same values to the controller Pod. Paths that do not run the controller set the variables themselves: the `make run` target exports them, and unit and integration tests set them explicitly (`t.Setenv` in unit tests). A custom install that omits a variable fails rendering with the missing name; it does not fall back to a public image.
+
+A raw `{{env.RELATED_IMAGE_*}}` placeholder is not sufficient on its own. It renders an empty string when the variable is unset, so the failure appears later as an `ImagePullBackOff` on a disconnected cluster. The helper turns the same condition into a render error that names the variable. The plugin-deps loader also does not run the template engine at all today, which the loader change below fixes.
 
 ```yaml
 # Flavour: config/profile/rhdh/default-config/flavours/intelligent-assistant/deployment.yaml
 - name: lightspeed-core
-  image: '{{ relatedImage "lightspeed-core" "quay.io/lightspeed-core/lightspeed-stack:0.7.3" }}'
+  image: '{{ relatedImage "flavour-intelligent-assistant-lightspeed-core" }}'
 ```
 
 ```yaml
 # Plugin-deps: config/profile/rhdh/plugin-deps/sonataflow.yaml
-image: '{{ relatedImage "postgresql" "quay.io/fedora/postgresql-18:latest" }}'
+image: '{{ relatedImage "postgresql" }}'
 ```
 
 ```yaml
 # Plugin-deps: config/profile/rhdh/plugin-deps/tekton.yaml
 - name: BASE_IMAGE
-  default: '{{ relatedImage "tekton-git" "cgr.dev/chainguard/git:root-2.39@sha256:7759f87050dd8bacabe61354d75ccd7f864d6b6f8ec42697db7159eccd491139" }}'
+  default: '{{ relatedImage "plugin-dep-tekton-git" }}'
 # ...
 - name: flatten
-  image: '{{ relatedImage "ubi-minimal" "registry.access.redhat.com/ubi10-minimal:10.1" }}'
+  image: '{{ relatedImage "plugin-dep-tekton-ubi" }}'
 ```
 
 Operator changes:
@@ -203,6 +205,7 @@ Operator changes:
 ```go
 // pkg/template/template.go
 import (
+    "fmt"
     "os"
     "strings"
     "text/template"
@@ -210,16 +213,17 @@ import (
 
 const relatedImageEnvPrefix = "RELATED_IMAGE_"
 
-// relatedImage returns the RELATED_IMAGE_* override when it is non-empty,
-// otherwise the fallback baked into the manifest. The empty check matches
-// pkg/model/deployment.go and pkg/model/db-statefulset.go: an explicitly
-// empty env var falls back instead of producing an empty image.
-func relatedImage(name, fallback string) string {
+// relatedImage returns the value of the RELATED_IMAGE_* variable for name.
+// The variable is the single source of truth: manifests carry no image
+// default, so an unset or empty variable fails rendering instead of
+// producing an empty image or pulling a public one.
+func relatedImage(name string) (string, error) {
     env := relatedImageEnvPrefix + strings.ReplaceAll(name, "-", "_")
-    if v := os.Getenv(env); v != "" {
-        return v
+    v := os.Getenv(env)
+    if v == "" {
+        return "", fmt.Errorf("required environment variable %s is not set", env)
     }
-    return fallback
+    return v, nil
 }
 ```
 
@@ -235,7 +239,7 @@ Implementation rules:
 
 - **Template-time, not post-render.** A generic "walk pod specs after rendering" pass would miss Tekton `Task` steps (`spec.steps[].image`), which are not pod specs. Template-time covers Deployments, Jobs, and Tekton Tasks uniformly.
 - **Register the helper explicitly.** `template.New("config")` currently has no `Funcs` call. Add `.Funcs(template.FuncMap{"relatedImage": relatedImage})` before `.Parse`; without it every new placeholder fails at parse time.
-- **One source of truth.** Read `os.Getenv` in the helper instead of adding a `RelatedImages` map to `TemplateData`. A map duplicates the Deployment env, can go stale, and forces every construction path to populate it. Tests can use `t.Setenv`.
+- **One source of truth.** Read `os.Getenv` in the helper instead of adding a `RelatedImages` map to `TemplateData`. A map duplicates the Deployment env, can go stale, and forces every construction path to populate it. Do not pass a default image reference to the helper either: an argument default in the manifest is a second copy of the value, and the two copies drift the moment only one is updated. Tests use `t.Setenv`.
 - **Extend the template guard.** `ApplyTemplate` has two checks: it returns unless it sees a `.Rhdh.` or `{{if ...}}` pattern, then returns again unless the content contains `.Rhdh.`. Replace both with `hasRhdh := strings.Contains(contentStr, ".Rhdh.")` and `hasRelatedImage := strings.Contains(contentStr, "relatedImage")`, and parse when either is true. Keeping the second `.Rhdh.` check would make `relatedImage`-only content a silent no-op. Do not parse arbitrary `{{...}}` content: plugin-deps still contain `{{backstage-name}}` / `{{backstage-ns}}` until the legacy replacements run.
 - **Migrate plugin-deps to the template engine.** `ReadPluginDeps` calls `strings.ReplaceAll` for `{{backstage-name}}` and `{{backstage-ns}}` and never calls `ApplyTemplate`. Do the legacy replacements first (Go templates would treat `{{backstage-name}}` as an undefined function), then call `ApplyTemplate`. Alternatively, migrate those two placeholders to `{{.Rhdh.Name}}` and `{{.Rhdh.Namespace}}` in the same change. Build `TemplateData` from the existing `bsName`, `bsNamespace`, and `platformExt` arguments rather than calling `NewTemplateData`, which also requires `Platform` and `ExternalConfig` objects that this path does not have.
 - **No CRD or API change.** This is a rendering and CSV change only.
@@ -290,13 +294,13 @@ spec:
         value: mirror.company.com/rhdh/rhdh-hub-rhel9@sha256:<digest>
       - name: RELATED_IMAGE_postgresql
         value: mirror.company.com/rhel10/postgresql-18@sha256:<digest>
-      - name: RELATED_IMAGE_lightspeed_core
+      - name: RELATED_IMAGE_flavour_intelligent_assistant_lightspeed_core
         value: mirror.company.com/lightspeed-core/lightspeed-stack-rhel9@sha256:<digest>
       - name: RELATED_IMAGE_plugin_dep_okp
         value: mirror.company.com/offline-knowledge-portal/rhokp-rhel9@sha256:<digest>
-      - name: RELATED_IMAGE_ubi_minimal
+      - name: RELATED_IMAGE_plugin_dep_tekton_ubi
         value: mirror.company.com/ubi10/ubi-minimal@sha256:<digest>
-      - name: RELATED_IMAGE_tekton_git
+      - name: RELATED_IMAGE_plugin_dep_tekton_git
         value: mirror.company.com/tekton/git@sha256:<digest>
       # Dev Preview only: not in spec.relatedImages until GA
       - name: RELATED_IMAGE_plugin_installer
@@ -343,7 +347,7 @@ This path only works for images the operator actually reads env vars for — whi
    ```
 
 2. **Mirror**: copy the images with the organisation's tooling (skopeo, crane, or similar). This ADR does not prescribe a tool.
-3. **Resolve**: set `RELATED_IMAGE_*` env vars pointing at the mirrored images, using the OLM Subscription (`spec.config.env`) when RHDH is installed via OLM, or the operator Deployment for non-OLM upstream installs. The env var name is `RELATED_IMAGE_` plus the related image name with `-` replaced by `_` (`lightspeed-core` → `RELATED_IMAGE_lightspeed_core`).
+3. **Resolve**: set `RELATED_IMAGE_*` env vars pointing at the mirrored images, using the OLM Subscription (`spec.config.env`) when RHDH is installed via OLM, or the operator Deployment for non-OLM upstream installs. The env var name is `RELATED_IMAGE_` plus the related image name with `-` replaced by `_` (`flavour-intelligent-assistant-lightspeed-core` → `RELATED_IMAGE_flavour_intelligent_assistant_lightspeed_core`).
 
 ---
 
@@ -353,8 +357,8 @@ This path only works for images the operator actually reads env vars for — whi
 
 | Area | Files | Change | Validation |
 |------|-------|--------|------------|
-| Env var source | `config/profile/rhdh/patches/deployment-patch.yaml` | Add every `RELATED_IMAGE_*` env var from the inventory, except `RELATED_IMAGE_plugin_installer`, with a non-empty default: upstream floating tags for upstream builds, which the downstream pipeline replaces with digest-pinned product images. `RELATED_IMAGE_plugin_installer` remains a manual Dev Preview override until GA (see above). | `make bundle`; inspect `spec.relatedImages` for missing, empty, or untagged product entries |
-| Intelligent Assistant flavour | `config/profile/rhdh/default-config/flavours/intelligent-assistant/deployment.yaml` | Replace the hardcoded `lightspeed-core` image with the `relatedImage` helper | Unit test: env set → override; env unset → fallback |
+| Env var source | `config/profile/rhdh/patches/deployment-patch.yaml` | Add every `RELATED_IMAGE_*` env var from the inventory, except `RELATED_IMAGE_plugin_installer`, with a non-empty value: upstream floating tags for upstream builds, which the downstream pipeline replaces with digest-pinned product images. This block is the only place an image reference is written. `RELATED_IMAGE_plugin_installer` remains a manual Dev Preview override until GA (see above). | `make bundle`; inspect `spec.relatedImages` for missing, empty, or untagged product entries |
+| Intelligent Assistant flavour | `config/profile/rhdh/default-config/flavours/intelligent-assistant/deployment.yaml` | Replace the hardcoded `lightspeed-core` image with the `relatedImage` helper | Unit test: env set → value; env unset → render error |
 | Plugin-deps | `config/profile/rhdh/plugin-deps/okp.yaml`, `sonataflow.yaml`, `tekton.yaml` | Replace hardcoded images with the helper, including the Tekton `BASE_IMAGE` default | Unit tests for each object type |
 | Template engine | `pkg/template/template.go` | Add the `relatedImage` helper, register it in a `FuncMap` before `Parse`, and extend the detection guard to parse content containing `relatedImage` | `pkg/template/template_test.go` |
 | Plugin-deps loader | `pkg/model/plugin_deps.go`, `GetPluginDeps` | Pass `TemplateData` through and call `ApplyTemplate` after the legacy replacements | `pkg/model` unit tests |
@@ -381,7 +385,7 @@ Adding images to `spec.relatedImages` makes them subject to Conforma validation.
 - `quay.io/lightspeed-core/lightspeed-stack` must map to `registry.redhat.io/lightspeed-core/lightspeed-stack-rhel9`.
 - `quay.io/fedora/postgresql-18` must map to the product PostgreSQL image.
 - `registry.access.redhat.com/ubi10-minimal` should map to its `registry.redhat.io` equivalent.
-- `cgr.dev/chainguard/git` is a third-party registry and may fail trusted-registry validation. This needs a product decision before the Tekton images are shipped in a product bundle: replace it with a Red Hat-hosted git image, or record an approved exception. The upstream default remains until that decision is made.
+- `cgr.dev/chainguard/git` is a third-party registry and may fail trusted-registry validation. This needs a product decision before the Tekton images are shipped in a product bundle: replace it with a Red Hat-hosted git image, or record an approved exception. The upstream value remains until that decision is made.
 
 This exposure is the intended effect of the ADR: adding the images to `spec.relatedImages` surfaces the trusted-registry and digest gaps in the downstream pipeline immediately, rather than leaving them hidden in bundle ConfigMaps. Downstream product bundles must resolve them (trusted registry plus digest pin) before shipping.
 
@@ -479,22 +483,21 @@ This was the approach in earlier revisions of this ADR.
 - ✅ **Conforma validation**: downstream pipelines can verify every related image.
 - ✅ **One mechanism for container images**: no parallel ConfigMap resolution path.
 - ✅ **Future-proof**: the template helper and CI guard cover new flavours and plugin-deps, not just today's list.
-- ✅ **Backward compatible**: existing `backstage`, `postgresql`, and `plugin-installer` handling is unchanged; new flavour and plugin-dependency placeholders fall back to the upstream default when no env var is set.
+- ✅ **Backward compatible**: existing `backstage`, `postgresql`, and `plugin-installer` handling is unchanged; new flavour and plugin-dependency placeholders read the `RELATED_IMAGE_*` variables that `deployment-patch.yaml` already sets on the controller.
 
 ### Negative
 
 - ❌ **Mirror payload grows**: `oc-mirror` users mirror OKP (10+ GB) and the Tekton/sonataflow images even when they do not enable the corresponding flavour or plugin. This lasts until OCPSTRAT-3755.
-- ❌ **`plugin-installer` is not discoverable until GA**: it is intentionally excluded from `spec.relatedImages` (Conforma), so Dev Preview users must set `RELATED_IMAGE_plugin_installer` manually.
 - ❌ **Optionality is documentation-only**: manual-mirroring users can skip opt-in images, but `oc-mirror` users cannot.
 - ❌ **Third-party registry gaps become visible**: `cgr.dev/chainguard/git` and upstream `quay.io/fedora/postgresql-18` will fail Conforma trusted-registry validation until downstream maps them to product images. That is intentional: listing them in `spec.relatedImages` is what surfaces the work. `ubi10-minimal` is currently shipped untagged (resolving to `:latest`); this ADR pins `:10.1` in the proposed env var, and CI must reject untagged values.
-- ❌ **Template failure mode**: a malformed placeholder can break reconciliation. A misspelled or undeclared env var is worse: the helper silently falls back to the public image and the failure surfaces only at pull time as `ImagePullBackOff`. Unit tests and the CI guard are required.
+- ❌ **Template failure mode**: a malformed placeholder or a missing `RELATED_IMAGE_*` variable fails reconciliation. That is deliberate — the alternative is an `ImagePullBackOff` on a disconnected cluster — but a bad bundle value then blocks every RHDH instance, so unit tests and the CI guard are required.
 - ❌ **Downstream work**: `replaceUpstreamImages.sh` and `sync-midstream.sh` need explicit changes; the generic digest loop is not sufficient.
 - ❌ **E2E dependency**: the `rhdh-airgap` mode still depends on the script until it is migrated.
-- ❌ **No removal date for the script**: keeping it avoids breaking E2E, but leaves a legacy path in the repository longer.
 
 ### Neutral
 
 - ⚖️ **Plugin OCI packages remain separate**: the ConfigMap mechanism is unaffected; plugins and container images have different pull paths.
+- ⚖️ **`plugin-installer` stays out of `spec.relatedImages` until GA**: that is a deliberate exception for a Dev Preview image, not a gap in the inventory. Users who enable `OPERATOR_DP_PROCESSING=true` set `RELATED_IMAGE_plugin_installer` manually.
 - ⚖️ **No CRD or API change**: this is a CSV and rendering change only.
 - ⚖️ **Helm is a separate inventory**: the chart keeps its own values and has no `spec.relatedImages` equivalent; the pins must be kept in sync manually.
 
